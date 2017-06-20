@@ -1,0 +1,2672 @@
+---
+title: "Target Marketing"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+Data Preparation
+--------------------------------------------
+Dynamic fuction to install and load the package
+
+```{r}
+#Function to check library is there in current machine or not, If not it will install and load in Environment 
+usePackage <- function(p) 
+{
+  if (!is.element(p, installed.packages()[,1]))
+    install.packages(p, dep = TRUE)
+  require(p, character.only = TRUE)
+}
+```
+
+
+Loading the required packages
+
+```{r}
+#List of library to be loaded in environment
+
+usePackage("readxl")
+usePackage("knitr")
+usePackage("ggplot2")
+usePackage("lubridate")
+usePackage("ROSE")
+usePackage("usdm")
+usePackage("DMwR")
+usePackage("randomForest")
+usePackage("vegan")
+usePackage("arm")
+usePackage("car")
+usePackage("MASS")
+usePackage("caret")
+usePackage("ROCR")
+usePackage("ggplot2")
+usePackage("e1071")
+usePackage("infotheo")
+usePackage("C50")
+usePackage("rpart")
+usePackage("ada")
+usePackage("h2o")
+usePackage("xgboost")
+
+```
+
+Setting the directory
+
+```{r}
+#Setting the directory
+(Working.Directory <- getwd())
+if (!is.null(Working.Directory)) 
+  setwd(Working.Directory)
+
+```
+
+
+Loading the data
+
+```{r}
+
+knitr::opts_knit$set(root.dir = 'C:/Users/mohamed.noordeen/Desktop/TargetMarketing')
+
+Data.Marketing <- read_excel(path = "Target Marketing and cross selling - Data.xls",col_names = c("Branch.ID", "Customer.ID", "Bill.To", "Customer.Type", "Customer.Name", "Address", "City", "State", "Zip.Code",
+	    "Zip.5", "Area.1", "Area.2", "Contact", "Setup.Date", "Last.Service.Date", "Ticket.Number",
+		"Current.Email", "Rev.Code", "Job.Code", "Call.Date", "Complete.Date", "Ticket.Revenue",
+		"Year.Month", "Year", "Week.Ending.Date", "Call.Time", "Schedule.Date", "Schedule.Time",
+		"Dispatch.Date", "Dispatch.Time", "Complete.Time"),sheet = 1, skip = 1)
+
+
+```
+
+
+Data Discovery
+-------------------------------------------------
+Learning about the data
+
+```{r}
+#Finding the incompleteness in data
+nrows <- nrow(Data.Marketing)
+ncomplete <- sum(complete.cases(Data.Marketing))
+ncomplete
+
+str(Data.Marketing)
+
+```
+Percentage of the data completness
+
+```{r}
+
+ncomplete/nrows
+
+rm(ncomplete,nrows)
+
+```
+
+Number of NA values
+
+```{r}
+
+sum(is.na(Data.Marketing))
+
+```
+
+Vewing Columnames
+
+```{r}
+
+colnames(Data.Marketing)
+
+```
+
+Number of Na's in each column
+
+```{r}
+
+apply(Data.Marketing,2,function(x){sum(is.na(x))})
+
+```
+
+Checking the structure of the data
+
+```{r}
+
+str(Data.Marketing)
+
+```
+
+Checking unique number of data in each column
+
+```{r}
+
+apply(Data.Marketing,2,function(x){length(unique(x))})
+
+```
+
+Checking the unique number of rows
+
+```{r}
+
+nrow(unique(Data.Marketing))
+
+```
+
+Other way of finding any duplication in data
+
+```{r}
+
+Data.Marketing[duplicated(Data.Marketing), ]
+
+```
+
+Viewing the dimension of the data
+
+```{r}
+
+dim(Data.Marketing)
+
+```
+
+Summarizing the data
+
+```{r}
+
+summary(Data.Marketing)
+
+```
+
+Viewing column names and class of data 
+
+```{r}
+
+attributes(Data.Marketing)
+
+```
+
+Veiwing first 6 dataframe
+
+```{r}
+
+head(Data.Marketing)
+
+```
+
+Feature Engineering
+----------------------------------------------
+Data Cleansing Preprocessing
+
+Removing month from year Column
+```{r}
+
+Data.Marketing$Month = as.numeric(substr(Data.Marketing$Year.Month,5,6))
+
+```
+
+Function to append data and Time 
+
+```{r}
+
+appendDateTime <- function(Data.Marketing){
+  
+# Converting the Dispatch Time column into the right format HH:MM
+Data.Marketing$Dispatch.Time <- substr(as.POSIXct(sprintf("%04.0f", as.numeric(Data.Marketing$Dispatch.Time)),    format='%H%M'), 12, 16)
+# Sample Converting 1240 -> 12:40
+  
+# Converting the Complete Time column HHMM into the right format HH:MM
+Data.Marketing$Complete.Time <- substr(as.POSIXct(sprintf("%04.0f", as.numeric(Data.Marketing$Complete.Time)), format='%H%M'), 12, 16)
+# Sample Converting 040 -> 00:40
+  
+# Converting the Schedule Time column HHMM into the right format HH:MM
+Data.Marketing$Schedule.Time <- substr(as.POSIXct(sprintf("%04.0f", as.numeric(Data.Marketing$Schedule.Time)), format='%H%M'), 12, 16)
+# Sample Converting 040 -> 00:40
+  
+# Converting the Call Time column HHMM into the right format HH:MM
+Data.Marketing$Call.Time <- substr(as.POSIXct(sprintf("%04.0f", as.numeric(Data.Marketing$Call.Time)), format='%H%M'), 12, 16)
+# Sample Converting 040 -> 00:40
+  
+# Appending Complete Date and Time
+Data.Marketing$Complete.Date.Time <- as.POSIXct(with(Data.Marketing, paste(Complete.Date, Complete.Time), format="%m/%d/%Y %H:%M"))
+# Sample Appending 6/4/2012 and 12:40 -> 6/4/2012 12:40 IST
+  
+# Appending Dispatch Date and Time
+Data.Marketing$Dispatch.Date.Time <- as.POSIXct(with(Data.Marketing, paste(Dispatch.Date, Dispatch.Time), format="%m/%d/%Y %H:%M"))
+# Sample Appending 6/4/2012 and 12:40 -> 6/4/2012 12:40 IST
+  
+# Appending Schedule Date and Time
+Data.Marketing$Schedule.Date.Time <- as.POSIXct(with(Data.Marketing, paste(Schedule.Date, Schedule.Time), format="%m/%d/%Y %H:%M"))
+# Sample Appending 6/4/2012 and 12:40 -> 6/4/2012 12:40 IST
+  
+# Data.Marketing Call Date and Time
+Data.Marketing$Call.Date.Time <- as.POSIXct(with(Data.Marketing, paste(Call.Date, Call.Time), format="%m/%d/%Y %H:%M"))
+# Sample Appending 6/4/2012 and 12:40 -> 6/4/2012 12:40 IST
+  
+# Formating Proper Setup Date
+Data.Marketing$Setup.Date <- as.POSIXct(with(Data.Marketing, paste(Setup.Date), format="%m/%d/%Y"))
+  
+return (Data.Marketing)
+  
+}
+
+
+Data.Marketing <- appendDateTime(Data.Marketing)
+
+```
+
+Remove unwanted date variables
+```{r}
+rmDateTimeVaribles <- c("Customer.Name","Address","Contact",
+                        "Last.Service.Date","Current.Email","Call.Date","Complete.Date","Call.Time","Schedule.Date",
+                        "Schedule.Time","Ticket.Number","Dispatch.Date","Dispatch.Time","Complete.Time","Year.Month")
+
+Required.Variables <- setdiff(names(Data.Marketing),rmDateTimeVaribles)
+
+Required.Variables
+
+Data.Marketing.Clean <- Data.Marketing[,Required.Variables]
+
+#Remove unwanted variables
+
+rm(rmDateTimeVaribles,Required.Variables)
+
+```
+
+Sorting the data based on customerID's and their call date
+```{r}
+
+Data.Marketing.Clean <- Data.Marketing.Clean[with(Data.Marketing.Clean,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+
+
+```
+
+Adding the visit number for each customer
+
+```{r}
+addVisitNumber <- function(Data.Marketing.Clean){
+  
+  # Writing a script to add a column with label indicating visit number of each customer
+  visit = 1
+  Data.Marketing.Clean$visit = 1
+  for(i in 1:nrow(Data.Marketing.Clean)){
+      
+    if(i==nrow(Data.Marketing.Clean)){
+        Data.Marketing.Clean$visit[i] = visit
+    }
+    else{
+      if(Data.Marketing.Clean$Customer.ID[i]!=Data.Marketing.Clean$Customer.ID[i+1]){
+        Data.Marketing.Clean$visit[i] = visit
+        visit = 1
+      }
+      else{
+        Data.Marketing.Clean$visit[i] = visit
+        visit <- visit + 1
+      }
+    }
+  }
+  
+  return (Data.Marketing.Clean) 
+}
+
+Data.Marketing.Clean <- addVisitNumber(Data.Marketing.Clean)
+
+```
+Finding Customer Callback days
+
+```{r}
+
+# Differencing the call date to find time taken for customer to call back
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Customer.Call.Back=unlist(tapply(Call.Date.Time, Customer.ID, function(x) c(0, diff(as.Date(x, format="%m/%d/%Y %H:%M"))))))
+
+```
+
+Finding Customer Ticket Transaction
+```{r}
+# Differencing the ticket revenue  to find hiked or offered 
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Customer.Ticket.status=unlist(tapply(Ticket.Revenue, Customer.ID, function(x) c(0, diff((x))))))
+
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Customer.Ticket.pricing=unlist(tapply(Customer.Ticket.status, Customer.ID, function(x) c(0, diff((x))))))
+
+
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Customer.Ticket.pricing.old=unlist(tapply(Customer.Ticket.pricing, Customer.ID, function(x) c(0, diff((x))))))
+
+```
+
+Differencing the Week.Ending.Date to find time taken for customer to call back
+
+```{r}
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Customer.Week.Back=unlist(tapply(Week.Ending.Date, Customer.ID, function(x) c(0, diff(as.Date(x, format="%m/%d/%Y %H:%M"))))))
+```
+
+Differencing setup date and call date
+```{r}
+
+Data.Marketing.Clean$Days.interval.setup = as.numeric( round(difftime(Data.Marketing.Clean$Call.Date.Time,Data.Marketing.Clean$Setup.Date, units = "days"),0)) # days
+
+```
+
+Differencing calldate and schedule date
+```{r}
+
+Data.Marketing.Clean$Days.Scheduled.After.Call =  as.numeric(   round(difftime(Data.Marketing.Clean$Schedule.Date.Time,Data.Marketing.Clean$Call.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing Schedule and Dispatch date
+```{r}
+
+Data.Marketing.Clean$Days.Dispatched.After.Schedule =   as.numeric( round(difftime(Data.Marketing.Clean$Dispatch.Date.Time,Data.Marketing.Clean$Schedule.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing Dispatch and Complete date
+
+```{r}
+
+Data.Marketing.Clean$Days.Completed.After.Dispatched =   as.numeric( round(difftime(Data.Marketing.Clean$Complete.Date.Time,Data.Marketing.Clean$Dispatch.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing call and Complete date
+
+```{r}
+
+Data.Marketing.Clean$Days.Completed.After.Call =   as.numeric( round(difftime(Data.Marketing.Clean$Complete.Date.Time,Data.Marketing.Clean$Call.Date.Time, units = "days"),0)) # days
+
+```
+
+```{r}
+
+Data.Marketing.Clean$Quarter = quarter(Data.Marketing.Clean$Week.Ending.Date)
+
+```
+
+Diferencing weekdate and setup date
+
+```{r}
+
+Data.Marketing.Clean$Days.WeekFiscal.setup =   as.numeric( round(difftime(Data.Marketing.Clean$Week.Ending.Date,Data.Marketing.Clean$Setup.Date, units = "days"),0)) # days
+
+```
+
+Diferencing weekdate and call date
+
+```{r}
+
+Data.Marketing.Clean$Days.WeekFiscal.call =   as.numeric( round(difftime(Data.Marketing.Clean$Week.Ending.Date,Data.Marketing.Clean$Call.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing weekdate and schedule date
+```{r}
+
+Data.Marketing.Clean$Days.WeekFiscal.Schedule =   as.numeric( round(difftime(Data.Marketing.Clean$Week.Ending.Date,Data.Marketing.Clean$Schedule.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing weekdate and dispatch date
+```{r}
+
+Data.Marketing.Clean$Days.WeekFiscal.Dispatch =   as.numeric( round(difftime(Data.Marketing.Clean$Week.Ending.Date,Data.Marketing.Clean$Dispatch.Date.Time, units = "days"),0)) # days
+
+```
+
+Differencing weekdate and Complete date
+```{r}
+
+Data.Marketing.Clean$Days.WeekFiscal.Complete =   as.numeric( round(difftime(Data.Marketing.Clean$Week.Ending.Date,Data.Marketing.Clean$Complete.Date.Time, units = "days"),0)) # days
+
+
+```
+
+Finding the threshold
+```{r}
+
+findCallBackThresholdForEachCustomerType <- function(targetData){
+  
+  # Every last row of each customer is a test data 
+  # Writing a script to add a column with label indicating with train and test
+  targetData$label = "train"
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData)){
+      targetData$label[i] = "test"
+    }
+    else{
+      if(targetData$Customer.ID[i]!=targetData$Customer.ID[i+1]){
+        targetData$label[i] = "test"
+      }
+    }
+  }
+  
+  # Rechecking the structure of the data
+  str(targetData)
+  
+  
+  #Separating the dataframe with train and test
+  DiffCalldateTargetdataTrain <- targetData[which(targetData$label=="train"),]
+  DiffCalldateTargetdataTest <- targetData[which(targetData$label=="test"),]
+  
+  # Finding the threshold of each customertype 
+  # Mean of number of days customer will calling back 
+  # Mean is calculated on the train data only 
+  DiffCalldateTargetdata.mean.by.CustomerType <- round(by( DiffCalldateTargetdataTrain$Customer.Call.Back,   DiffCalldateTargetdataTrain$Customer.Type, mean),0)
+  
+  return (DiffCalldateTargetdata.mean.by.CustomerType) 
+}
+
+
+thresholdOfCustomerType <- findCallBackThresholdForEachCustomerType(Data.Marketing.Clean)
+thresholdOfCustomerType
+
+```
+Adding threshold as a column 
+```{r}
+
+Data.Marketing.Clean$threshold_churn <- ifelse(Data.Marketing.Clean$Customer.Type=="CustType01",thresholdOfCustomerType["CustType01"],ifelse(Data.Marketing.Clean$Customer.Type=="CustType02",thresholdOfCustomerType["CustType02"],thresholdOfCustomerType["CustType03"]))
+
+```
+
+Differencing Threshold and CallBack
+```{r}
+
+Data.Marketing.Clean$Callback.Threshold.Diff <- Data.Marketing.Clean$threshold_churn - Data.Marketing.Clean$Customer.Call.Back
+
+```
+
+Making the data in column zero if it is negative
+```{r}
+
+Data.Marketing.Clean <-within(Data.Marketing.Clean, Customer.Week.Back<-Customer.Week.Back*(Customer.Week.Back>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.interval.setup<-Days.interval.setup*(Days.interval.setup>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.Scheduled.After.Call <-Days.Scheduled.After.Call*(Days.Scheduled.After.Call>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.Dispatched.After.Schedule <-Days.Dispatched.After.Schedule*(Days.Dispatched.After.Schedule>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.Dispatched.After.Schedule <-Days.Dispatched.After.Schedule*(Days.Dispatched.After.Schedule>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.Completed.After.Dispatched <-Days.Completed.After.Dispatched*(Days.Completed.After.Dispatched>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.Completed.After.Call <-Days.Completed.After.Call*(Days.Completed.After.Call>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.WeekFiscal.setup <-Days.WeekFiscal.setup*(Days.WeekFiscal.setup>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.WeekFiscal.call <-Days.WeekFiscal.call*(Days.WeekFiscal.call>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.WeekFiscal.Schedule <-Days.WeekFiscal.Schedule*(Days.WeekFiscal.Schedule>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.WeekFiscal.Dispatch <-Days.WeekFiscal.Dispatch*(Days.WeekFiscal.Dispatch>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Days.WeekFiscal.Complete <-Days.WeekFiscal.Complete*(Days.WeekFiscal.Complete>0))
+
+Data.Marketing.Clean <- within(Data.Marketing.Clean, Callback.Threshold.Diff <-Callback.Threshold.Diff*(Callback.Threshold.Diff>0))
+
+
+```
+
+
+Setting the churn data column based on threshold
+```{r}
+
+Data.Marketing.Clean$churn <- ifelse(Data.Marketing.Clean$Customer.Call.Back>=Data.Marketing.Clean$threshold_churn,1,0)
+
+```
+
+Likelihood to function to mask the data
+```{r}
+
+likelihood <- function(x){
+  a<- round(sum(x)/length(x),1)
+}
+
+```
+
+Checking the past ticket pricing for customer
+
+```{r}
+
+compareLastPricingWithCurrent <- function(targetData){
+  
+  #orderig the data based on customerid and call date
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time,format="%m/%d/%Y  %H:%M"))),]
+  
+  # Every last row of each customer is a test data 
+  customer = 1
+  targetData$tickeket.hike = "0"
+  for(i in 1:nrow(targetData)){
+   
+    if(customer < 3){
+      targetData$tickeket.hike[i] = 0
+      customer = customer + 1
+    }
+    else{
+      if(i==nrow(targetData)){
+        if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-2]){
+            targetData$tickeket.hike[i] = 1          
+            }
+      }
+      else{
+        if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+          if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-2]){
+            targetData$tickeket.hike[i] = 1          
+            }
+        }
+        else{
+          if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-2]){
+            targetData$tickeket.hike[i] = 1          
+            }
+          customer = 1
+        }
+      }
+      
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- compareLastPricingWithCurrent(Data.Marketing.Clean)
+
+
+compareLast2ndPricingWithCurrent <- function(targetData){
+  
+    #orderig the data based on customerid and call date
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time,format="%m/%d/%Y  %H:%M"))),]
+  
+  # Every last row of each customer is a test data 
+  customer = 1
+  targetData$tickeket.2nd.hike = "0"
+  for(i in 1:nrow(targetData)){
+   
+    if(customer < 4){
+      targetData$tickeket.2nd.hike[i] = 0
+      customer = customer + 1
+    }
+    else{
+      if(i==nrow(targetData)){
+        if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-3]){
+            targetData$tickeket.2nd.hike[i] = 1          
+            }
+      }
+      else{
+        if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+          if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-3]){
+            targetData$tickeket.2nd.hike[i] = 1          
+            }
+        }
+        else{
+          if(targetData$Ticket.Revenue[i-1]>targetData$Ticket.Revenue[i-3]){
+            targetData$tickeket.2nd.hike[i] = 1          
+            }
+          customer = 1
+        }
+      }
+      
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- compareLast2ndPricingWithCurrent(Data.Marketing.Clean)
+
+
+```
+
+Masking the ticket hike , visit and Customer.ID
+
+```{r}
+
+Encoded.Hike = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(tickeket.hike=Data.Marketing.Clean$tickeket.hike,visit = Data.Marketing.Clean$visit, tickeket.2nd.hike = Data.Marketing.Clean$tickeket.2nd.hike ), FUN=likelihood))
+
+Encoded.Hike
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Encoded.Hike, by=c("tickeket.hike","visit","tickeket.2nd.hike"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Last.Hike"
+
+rm(Encoded.Hike)
+```
+
+
+
+Masking the BranchId
+```{r}
+
+Branch.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Branch.ID=Data.Marketing.Clean$Branch.ID), FUN=likelihood))
+
+Branch.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Branch.Mask, by="Branch.ID")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.BranchId"
+
+rm(Branch.Mask)
+
+```
+
+Masking the State
+```{r}
+State.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(State=Data.Marketing.Clean$State), FUN=likelihood))
+
+State.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, State.Mask, by="State")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.State"
+
+rm(State.Mask)
+
+```
+
+Masking the zipcode
+```{r}
+
+Zip.Code.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Zip.Code=Data.Marketing.Clean$Zip.Code), FUN=likelihood))
+
+Zip.Code.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Zip.Code.Mask, by="Zip.Code")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Zip.Code"
+
+rm(Zip.Code.Mask)
+
+```
+
+Masking the CustomerId
+```{r}
+
+Customer.Id.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Customer.ID=Data.Marketing.Clean$Customer.ID), FUN=likelihood))
+
+Customer.Id.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Customer.Id.Mask, by="Customer.ID")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Customer.Id"
+
+rm(Customer.Id.Mask)
+
+```
+
+Masking the Customer.Type
+```{r}
+
+Customer.Type.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Customer.Type=Data.Marketing.Clean$Customer.Type), FUN=likelihood))
+
+Customer.Type.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Customer.Type.Mask, by="Customer.Type")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Customer.Type"
+
+rm(Customer.Type.Mask)
+
+```
+Masking the Year
+```{r}
+Year.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Year=Data.Marketing.Clean$Year), FUN=likelihood))
+
+Year.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Year.Mask, by="Year")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Year"
+
+rm(Year.Mask)
+
+```
+
+Masking the month
+```{r}
+
+Month.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Month=Data.Marketing.Clean$Month), FUN=likelihood))
+
+Month.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Month.Mask, by="Month")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Month"
+
+rm(Month.Mask)
+
+```
+Masking the City
+
+```{r}
+
+City.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(City=Data.Marketing.Clean$City), FUN=likelihood))
+
+City.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, City.Mask, by="City")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.City"
+
+rm(City.Mask)
+
+```
+
+```{r}
+
+
+Zip.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Zip.5=Data.Marketing.Clean$Zip.5), FUN=likelihood))
+
+Zip.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Zip.Mask, by="Zip.5")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Zip.5"
+
+rm(Zip.Mask)
+
+```
+
+
+```{r}
+
+Area.1.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Area.1=Data.Marketing.Clean$Area.1), FUN=likelihood))
+
+Area.1.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Area.1.Mask, by="Area.1")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Area.1"
+
+rm(Area.1.Mask)
+
+```
+
+```{r}
+
+Area.2.Mask = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Area.2=Data.Marketing.Clean$Area.2), FUN=likelihood))
+
+Area.2.Mask
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Area.2.Mask, by="Area.2")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Area.2"
+
+rm(Area.2.Mask)
+
+```
+
+
+Finding the day of the week for each date column
+```{r}
+
+Data.Marketing.Clean$Setup.Day.Week <- as.POSIXlt(Data.Marketing.Clean$Setup.Date)$wday
+
+Data.Marketing.Clean$Call.Day.Week <- as.POSIXlt(Data.Marketing.Clean$Call.Date.Time)$wday
+
+Data.Marketing.Clean$Schedule.Day.Week <- as.POSIXlt(Data.Marketing.Clean$Schedule.Date.Time)$wday
+
+Data.Marketing.Clean$Dispatch.Day.Week <- as.POSIXlt(Data.Marketing.Clean$Dispatch.Date.Time)$wday
+
+Data.Marketing.Clean$Complete.Day.Week <- as.POSIXlt(Data.Marketing.Clean$Complete.Date.Time)$wday
+
+```
+
+
+```{r}
+
+Setup.Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Setup.Day.Week=Data.Marketing.Clean$Setup.Day.Week), FUN=likelihood))
+
+Setup.Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Setup.Day.Week, by="Setup.Day.Week")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Setup.Day.Week"
+
+Data.Marketing.Clean = Data.Marketing.Clean[,-which(names(Data.Marketing.Clean) == "Setup.Day.Week")]
+
+rm(Setup.Day.Week)
+
+```
+
+```{r}
+Call.Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Call.Day.Week
+=Data.Marketing.Clean$Call.Day.Week), FUN=likelihood))
+
+Call.Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Call.Day.Week, by="Call.Day.Week")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Call.Day.Week"
+
+Data.Marketing.Clean = Data.Marketing.Clean[,-which(names(Data.Marketing.Clean) == "Call.Day.Week")]
+
+rm(Call.Day.Week)
+
+```
+
+```{r}
+str(Data.Marketing.Clean)
+
+Schedule.Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Schedule.Day.Week=Data.Marketing.Clean$  Schedule.Day.Week), FUN=likelihood))
+
+Schedule.Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Schedule.Day.Week, by="Schedule.Day.Week")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Schedule.Day.Week"
+
+Data.Marketing.Clean = Data.Marketing.Clean[,-which(names(Data.Marketing.Clean) == "Schedule.Day.Week")]
+
+rm(Schedule.Day.Week)
+
+```
+
+```{r}
+
+Dispatch.Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Dispatch.Day.Week=Data.Marketing.Clean$  Dispatch.Day.Week), FUN=likelihood))
+
+Dispatch.Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Dispatch.Day.Week, by="Dispatch.Day.Week")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Dispatch.Day.Week"
+
+Data.Marketing.Clean = Data.Marketing.Clean[,-which(names(Data.Marketing.Clean) == "Dispatch.Day.Week")]
+
+rm(Dispatch.Day.Week)
+
+```
+
+```{r}
+
+Complete.Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Complete.Day.Week=Data.Marketing.Clean$  Complete.Day.Week), FUN=likelihood))
+
+Complete.Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Complete.Day.Week, by="Complete.Day.Week")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Complete.Day.Week"
+
+Data.Marketing.Clean = Data.Marketing.Clean[,-which(names(Data.Marketing.Clean) == "Complete.Day.Week")]
+
+rm(Complete.Day.Week)
+
+```
+
+
+
+```{r}
+
+Data.Marketing.Clean$customer.week.back.bucket = as.numeric(cut(Data.Marketing.Clean$Customer.Week.Back, breaks=2,labels=c(1:2)))
+
+str(Data.Marketing.Clean)
+
+customer.week.back.bucket = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(customer.week.back.bucket=Data.Marketing.Clean$customer.week.back.bucket), FUN=likelihood))
+
+customer.week.back.bucket
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, customer.week.back.bucket, by="customer.week.back.bucket")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.customer.week.back.bucket"
+
+
+rm(customer.week.back.bucket)
+
+```
+
+```{r}
+
+threshold_churn = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(threshold_churn=Data.Marketing.Clean$threshold_churn), FUN=likelihood))
+
+threshold_churn
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, threshold_churn, by="threshold_churn")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.churn.prob"
+
+rm(threshold_churn)
+
+```
+
+```{r}
+
+jobrev = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Job.Code=Data.Marketing.Clean$Job.Code,Rev.Code =Data.Marketing.Clean$Rev.Code), FUN=likelihood))
+
+jobrev
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, jobrev, by=c("Job.Code","Rev.Code"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Job.Rev"
+
+rm(jobrev)
+
+```
+
+
+```{r}
+
+YearMonth = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Year=Data.Marketing.Clean$Year,Month =Data.Marketing.Clean$Month), FUN=likelihood))
+
+YearMonth
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, YearMonth, by=c("Year","Month"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Year.Month"
+
+rm(YearMonth)
+
+```
+
+
+```{r}
+Area = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(State=Data.Marketing.Clean$State, City =Data.Marketing.Clean$City,Zip.Code = Data.Marketing.Clean$Zip.Code, Zip.5 = Data.Marketing.Clean$Zip.5,Area.1 = Data.Marketing.Clean$Area.1,Area.2 = Data.Marketing.Clean$Area.2, Branch.ID=Data.Marketing.Clean$Branch.ID), FUN=likelihood))
+
+Area
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Area, by=c("State","City","Zip.Code","Zip.5", "Area.1","Area.2","Branch.ID"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Encoded.Area"
+
+rm(Area)
+
+```
+
+```{r}
+
+Quarter = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Quarter=Data.Marketing.Clean$Quarter), FUN=likelihood))
+
+Quarter
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Quarter, by="Quarter")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.Quarter"
+
+rm(Quarter)
+
+```
+
+
+```{r}
+
+Area.Year.Quarter.Month = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Encoded.Area=Data.Marketing.Clean$Encoded.Area, Masked.Year.Month =Data.Marketing.Clean$Masked.Year.Month, Masked.Quarter =Data.Marketing.Clean$Masked.Quarter ), FUN=likelihood))
+
+Area.Year.Quarter.Month
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Area.Year.Quarter.Month, by=c("Encoded.Area", "Masked.Year.Month" ,"Masked.Quarter"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Encoded.Area.Year.Quarter.Month"
+
+rm(Area.Year.Quarter.Month)
+
+```
+
+Encoding the visit 
+
+```{r}
+
+visit.encode = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(visit=Data.Marketing.Clean$visit ), FUN=likelihood))
+
+visit.encode
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, visit.encode, by="visit")
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Masked.visit"
+
+rm(visit.encode)
+
+```
+
+```{r}
+
+Day.Week = data.frame(aggregate(Data.Marketing.Clean$churn, by=list(Masked.Setup.Day.Week=Data.Marketing.Clean$Masked.Setup.Day.Week, Masked.Call.Day.Week=Data.Marketing.Clean$Masked.Call.Day.Week,Masked.Schedule.Day.Week=Data.Marketing.Clean$Masked.Schedule.Day.Week,Masked.Dispatch.Day.Week=Data.Marketing.Clean$Masked.Dispatch.Day.Week,Masked.Complete.Day.Week=Data.Marketing.Clean$Masked.Complete.Day.Week,Masked.visit = Data.Marketing.Clean$Masked.visit,Bill.To =  Data.Marketing.Clean$Bill.To), FUN=likelihood))
+
+Day.Week
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, Day.Week, by=c("Masked.Setup.Day.Week","Masked.Call.Day.Week","Masked.Schedule.Day.Week","Masked.Dispatch.Day.Week","Masked.Complete.Day.Week","Masked.visit","Bill.To"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Encoded.Week.back"
+
+rm(Day.Week)
+
+```
+
+
+```{r}
+
+
+
+
+findCompletedAfterCall <- function(targetData){
+  
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  customer = 1
+  targetData$lastCompleteDuration = 0
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData)){
+      targetData$lastCompleteDuration[i] = targetData$Days.Completed.After.Call[i-1]
+    }
+    else{
+      if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+        if(customer == 1){
+          targetData$lastCompleteDuration[i] = 0
+          customer = customer + 1
+        }
+        else{
+          targetData$lastCompleteDuration[i] = targetData$Days.Completed.After.Call[i-1]
+        }
+      }
+      else{
+        targetData$lastCompleteDuration[i] = targetData$Days.Completed.After.Call[i-1]
+        customer = 1
+        
+      }
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- findCompletedAfterCall(Data.Marketing.Clean)
+
+Data.Marketing.Clean$lastCompleteDuration =  ifelse(Data.Marketing.Clean$lastCompleteDuration>0,1,0)
+
+
+findLast2ndDelayinDispatch <- function(targetData){
+  
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+  customer = 1
+  targetData$las2ndDelay = 0
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData) ){
+      targetData$las2ndDelay[i] = targetData$Days.Dispatched.After.Schedule[i-2]
+    }
+    else{
+      if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+        if(customer == 1 |customer == 2){
+          targetData$las2ndDelay[i] = 0
+          customer = customer + 1
+        }
+        else{
+          targetData$las2ndDelay[i] = targetData$Days.Dispatched.After.Schedule[i-2]
+        }
+      }
+      else{
+        targetData$las2ndDelay[i] = targetData$Days.Dispatched.After.Schedule[i-2]
+        customer = 1
+        
+      }
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- findLast2ndDelayinDispatch(Data.Marketing.Clean)
+
+
+Data.Marketing.Clean$las2ndDelay =  ifelse(Data.Marketing.Clean$las2ndDelay>0,1,0)
+
+
+
+findLast2ndCompletedAfterCall <- function(targetData){
+  
+    targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+
+  
+  customer = 1
+  targetData$las2ndCompletedAfterCall = 0
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData) ){
+      targetData$las2ndCompletedAfterCall[i] = targetData$Days.Completed.After.Call[i-2]
+    }
+    else{
+      if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+        if(customer == 1 |customer == 2){
+          targetData$las2ndCompletedAfterCall[i] = 0
+          customer = customer + 1
+        }
+        else{
+          targetData$las2ndCompletedAfterCall[i] = targetData$Days.Completed.After.Call[i-2]
+        }
+      }
+      else{
+        targetData$las2ndCompletedAfterCall[i] = targetData$Days.Completed.After.Call[i-2]
+        customer = 1
+        
+      }
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- findLast2ndCompletedAfterCall(Data.Marketing.Clean)
+
+Data.Marketing.Clean$las2ndCompletedAfterCall =  ifelse(Data.Marketing.Clean$las2ndCompletedAfterCall>0,1,0)
+
+
+```
+
+```{r}
+findLastDelayinDispatch <- function(targetData){
+  
+targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+customer = 1
+targetData$lastDelay = 0
+for(i in 1:nrow(targetData)){
+  if(i==nrow(targetData)){
+    targetData$lastDelay[i] = targetData$Days.Dispatched.After.Schedule[i-1]
+  }
+  else{
+    if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+      if(customer == 1){
+        targetData$lastDelay[i] = 0
+        customer = customer + 1
+      }
+      else{
+        targetData$lastDelay[i] = targetData$Days.Dispatched.After.Schedule[i-1]
+      }
+    }
+    else{
+      targetData$lastDelay[i] = targetData$Days.Dispatched.After.Schedule[i-1]
+      customer = 1
+      
+    }
+  }
+}
+return (targetData)
+}
+
+Data.Marketing.Clean <- findLastDelayinDispatch(Data.Marketing.Clean)
+
+
+Data.Marketing.Clean$lastDelay =  ifelse(Data.Marketing.Clean$lastDelay>0,1,0)
+```
+
+
+```{r}
+
+last.Trans.delays = data.frame(aggregate(Data.Marketing.Clean$churn, by=list( lastDelay
+=Data.Marketing.Clean$lastDelay,las2ndDelay=Data.Marketing.Clean$las2ndDelay,lastCompleteDuration=Data.Marketing.Clean$lastCompleteDuration,las2ndCompletedAfterCall = Data.Marketing.Clean$las2ndCompletedAfterCall , Encoded.Week.back = Data.Marketing.Clean$Encoded.Week.back,visit = Data.Marketing.Clean$visit), FUN=likelihood))
+
+last.Trans.delays
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, last.Trans.delays, by=c("lastDelay","las2ndDelay","lastCompleteDuration","las2ndCompletedAfterCall","Encoded.Week.back","visit"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Encoded.last.Trans.Delays"
+
+rm(last.Trans.delays)
+
+```
+
+```{r}
+findLastRevenue <- function(targetData){
+  
+targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+customer = 1
+targetData$lastRevenue = 0
+for(i in 1:nrow(targetData)){
+  if(i==nrow(targetData)){
+    targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+  }
+  else{
+    if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+      if(customer == 1){
+        targetData$lastRevenue[i] = 0
+        customer = customer + 1
+      }
+      else{
+        targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+      }
+    }
+    else{
+      targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+      customer = 1
+      
+    }
+  }
+}
+return (targetData)
+}
+
+Data.Marketing.Clean <- findLastRevenue(Data.Marketing.Clean)
+
+
+Data.Marketing.Clean$lastRevenue =  ifelse(Data.Marketing.Clean$lastRevenue>0,1,0)
+
+
+findLast2ndRevenue <- function(targetData){
+  
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+  customer = 1
+  targetData$last2ndRevenue = 0
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData) ){
+      targetData$last2ndRevenue[i] = targetData$Ticket.Revenue[i-2]
+    }
+    else{
+      if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+        if(customer == 1 |customer == 2){
+          targetData$last2ndRevenue[i] = 0
+          customer = customer + 1
+        }
+        else{
+          targetData$last2ndRevenue[i] = targetData$Ticket.Revenue[i-2]
+        }
+      }
+      else{
+        targetData$last2ndRevenue[i] = targetData$Ticket.Revenue[i-2]
+        customer = 1
+        
+      }
+    }
+  }
+  return (targetData)
+}
+
+Data.Marketing.Clean <- findLast2ndRevenue(Data.Marketing.Clean)
+
+
+Data.Marketing.Clean$last2ndRevenue =  ifelse(Data.Marketing.Clean$last2ndRevenue>0,1,0)
+```
+
+
+
+```{r}
+
+Data.Marketing.Clean$tickeket.hike = ifelse(Data.Marketing.Clean$tickeket.hike>0,1,0)
+Data.Marketing.Clean$tickeket.2nd.hike = ifelse(Data.Marketing.Clean$tickeket.2nd.hike>0,1,0)
+Data.Marketing.Clean$Customer.Ticket.pricing.old = ifelse(Data.Marketing.Clean$Customer.Ticket.pricing.old>0,1,0)
+
+Data.Marketing.Clean$hikesub = Data.Marketing.Clean$tickeket.2nd.hike - Data.Marketing.Clean$tickeket.hike
+
+
+last.Trans.Revenue = data.frame(aggregate(Data.Marketing.Clean$churn, by=list( lastRevenue
+=Data.Marketing.Clean$lastRevenue,last2ndRevenue=Data.Marketing.Clean$last2ndRevenue,tickeket.hike = Data.Marketing.Clean$tickeket.hike,tickeket.2nd.hike = Data.Marketing.Clean$tickeket.2nd.hike,
+hikesub = Data.Marketing.Clean$hikesub,Customer.Ticket.pricing.old = Data.Marketing.Clean$Customer.Ticket.pricing.old,  visit = Data.Marketing.Clean$visit), FUN=likelihood))
+
+last.Trans.Revenue
+
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, last.Trans.Revenue, by=c("lastRevenue","last2ndRevenue","tickeket.hike","tickeket.2nd.hike","hikesub","Customer.Ticket.pricing.old","visit"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "last.Revenue.hike"
+
+rm(last.Trans.Revenue)
+
+```
+
+
+
+```{r}
+
+Data.Marketing.Clean$Setup.Date.timestamp <- as.numeric(as.POSIXct(Data.Marketing.Clean$Setup.Date))
+
+Data.Marketing.Clean$Week.Ending.Date.timestamp <- as.numeric(as.POSIXct(Data.Marketing.Clean$Week.Ending.Date))
+
+Data.Marketing.Clean <-  transform(Data.Marketing.Clean, Week.End.Timestamp=unlist(tapply(Week.Ending.Date.timestamp, Customer.ID, function(x) c(0, diff((x))))))
+
+Data.Marketing.Clean$Complete.Date.Time.timestamp <- as.numeric(as.POSIXct(Data.Marketing.Clean$Complete.Date.Time))
+
+Data.Marketing.Clean$Dispatch.Date.Time.timestamp <- as.numeric(as.POSIXct(Data.Marketing.Clean$Dispatch.Date.Time))
+
+Data.Marketing.Clean$setup.days = (Data.Marketing.Clean$Customer.Week.Back + Data.Marketing.Clean$Days.interval.setup  )
+
+Data.Marketing.Clean$Schedule.Date.Time.timestamp <- as.numeric(as.POSIXct(Data.Marketing.Clean$Schedule.Date.Time))
+
+Data.Marketing.Clean$Call.Date.Time.timestamp  <- as.numeric(as.POSIXct(Data.Marketing.Clean$Call.Date.Time ))
+
+
+```
+
+```{r}
+
+Data.Marketing.Clean$Call.Date.cut = as.numeric(cut(Data.Marketing.Clean$Call.Date.Time.timestamp, breaks=10,labels=c(1:10)))
+
+Data.Marketing.Clean$week.Date.cut = as.numeric(cut(Data.Marketing.Clean$Week.Ending.Date.timestamp, breaks=10,labels=c(1:10)))
+
+Data.Marketing.Clean$callback.cut = as.numeric(cut(Data.Marketing.Clean$Callback.Threshold.Diff, breaks=3,labels=c(1:3)))
+
+
+
+last.Pricing = data.frame(aggregate(Data.Marketing.Clean$churn, by=list( Call.Date.cut
+=Data.Marketing.Clean$Call.Date.cut, week.Date.cut= Data.Marketing.Clean$week.Date.cut,callback.cut = Data.Marketing.Clean$callback.cut), FUN=likelihood))
+
+last.Pricing
+
+
+Data.Marketing.Clean <- merge(Data.Marketing.Clean, last.Pricing, by=c("Call.Date.cut","week.Date.cut","callback.cut"))
+
+colnames(Data.Marketing.Clean)[which(names(Data.Marketing.Clean) == "x")] <- "Week.timestamp"
+
+rm(last.Pricing)
+
+
+
+```
+```{r}
+findLastCallTimeStamp <- function(targetData){
+  
+targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+customer = 1
+targetData$lastCall = 0
+for(i in 1:nrow(targetData)){
+  if(i==nrow(targetData)){
+    targetData$lastCall[i] = targetData$Call.Date.Time.timestamp[i-1]
+  }
+  else{
+    if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+      if(customer == 1){
+        targetData$lastCall[i] = 0
+        customer = customer + 1
+      }
+      else{
+        targetData$lastCall[i] = targetData$Call.Date.Time.timestamp[i-1]
+      }
+    }
+    else{
+      targetData$lastCall[i] = targetData$Call.Date.Time.timestamp[i-1]
+      customer = 1
+      
+    }
+  }
+}
+return (targetData)
+}
+
+
+Data.Marketing.Clean <- findLastCallTimeStamp(Data.Marketing.Clean)
+```
+
+
+```{r}
+findLastTicketRevenue <- function(targetData){
+  
+targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+customer = 1
+targetData$lastRevenue = 0
+for(i in 1:nrow(targetData)){
+  if(i==nrow(targetData)){
+    targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+  }
+  else{
+    if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+      if(customer == 1){
+        targetData$lastRevenue[i] = 0
+        customer = customer + 1
+      }
+      else{
+        targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+      }
+    }
+    else{
+      targetData$lastRevenue[i] = targetData$Ticket.Revenue[i-1]
+      customer = 1
+      
+    }
+  }
+}
+return (targetData)
+}
+
+
+Data.Marketing.Clean <- findLastTicketRevenue(Data.Marketing.Clean)
+
+findLast2ndTicketRevenue <- function(targetData){
+  
+targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+customer = 1
+targetData$last2ndRevenue = 0
+for(i in 1:nrow(targetData)){
+  if(i==nrow(targetData)){
+    targetData$last2ndRevenue[i] = targetData$lastRevenue[i-1]
+  }
+  else{
+    if(targetData$Customer.ID[i]==targetData$Customer.ID[i+1]){
+      if(customer == 1){
+        targetData$last2ndRevenue[i] = 0
+        customer = customer + 1
+      }
+      else{
+        targetData$last2ndRevenue[i] = targetData$lastRevenue[i-1]
+      }
+    }
+    else{
+      targetData$last2ndRevenue[i] = targetData$lastRevenue[i-1]
+      customer = 1
+      
+    }
+  }
+}
+return (targetData)
+}
+
+
+Data.Marketing.Clean <- findLast2ndTicketRevenue(Data.Marketing.Clean)
+```
+
+
+
+Remove first transaction of customer
+
+```{r}
+
+splitActualData <- function(targetData){
+  # Ordering the Dataframe by Customer Id and Ascending Call.Date.Time
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+  targetData$remove = "false"
+  for(i in 1:nrow(targetData)-1){
+    if(i==0 | i==1){
+      targetData$remove[i] = "true"
+    }
+    else{
+      if(targetData$Customer.ID[i]!=targetData$Customer.ID[i+1]){
+        targetData$remove[i+1] = "true"
+      }
+    }
+  }
+  
+  #Separating the dataframe with train and test
+  targetData.first <- targetData[which(targetData$remove=="true"),]
+  
+  targetData.remaining <- targetData[which(targetData$remove=="false"),]
+  
+  labels <- setdiff(colnames(targetData.first) ,"remove")
+  
+  targetData.first <- targetData.first[,labels]
+  
+  targetData.remaining <-targetData.remaining[,labels]
+  
+  dataList<- list("first"= targetData.first, "remaining"= targetData.remaining) 
+  
+  
+  return(dataList)
+  
+}
+
+
+
+dataRemoveFirstTransaction <- splitActualData(Data.Marketing.Clean)
+
+Data.Marketing.Clean.Transformed <- dataRemoveFirstTransaction$remain
+
+```
+
+Removing the erroroneous data
+
+```{r}
+
+Data.Marketing.Clean.Transformed <- Data.Marketing.Clean.Transformed[with(Data.Marketing.Clean.Transformed, Setup.Date <= Call.Date.Time),]
+
+
+
+
+```
+
+Segregating data based on customer type
+
+```{r}
+Data.Marketing.Clean.Transformed.cutomertype1 = Data.Marketing.Clean.Transformed[with(Data.Marketing.Clean.Transformed, Customer.Type == "CustType01" ),]
+
+Data.Marketing.Clean.Transformed.cutomertype2 = Data.Marketing.Clean.Transformed[with(Data.Marketing.Clean.Transformed, Customer.Type == "CustType02" ),]
+
+Data.Marketing.Clean.Transformed.cutomertype3 = Data.Marketing.Clean.Transformed[with(Data.Marketing.Clean.Transformed, Customer.Type == "CustType03" ),]
+
+
+
+
+```
+
+Splitting the data to train and test
+
+```{r}
+
+splitTrainAndTest <- function(targetData){
+  # Ordering the Dataframe by Customer Id and Ascending Call.Date.Time
+  targetData <- targetData[with(targetData,order(Customer.ID, as.Date(Call.Date.Time, format="%m/%d/%Y  %H:%M"))),]
+  
+  targetData$label = "train"
+  for(i in 1:nrow(targetData)){
+    if(i==nrow(targetData)){
+      targetData$label[i] = "test"
+    }
+    else{
+
+      if(targetData$Customer.ID[i]!=targetData$Customer.ID[i+1]){
+        targetData$label[i] = "test"
+      }
+    }
+  }
+  
+  #Separating the dataframe with train and test
+  targetData.train <- targetData[which(targetData$label=="train"),]
+  
+  targetData.test <- targetData[which(targetData$label=="test"),]
+  
+  labels <- setdiff(colnames(targetData.train) ,"label")
+  
+  targetData.train <- targetData.train[,labels]
+  
+  targetData.test <-targetData.test[,labels]
+  
+  dataList<- list("train"= targetData.train, "test"= targetData.test) 
+  
+  
+  return(dataList)
+  
+}
+
+
+dataTrainTest <- splitTrainAndTest(Data.Marketing.Clean.Transformed)
+
+train <- dataTrainTest$train
+
+test <- dataTrainTest$test
+
+head(train)
+
+
+dataTrainTest1 <- splitTrainAndTest(Data.Marketing.Clean.Transformed.cutomertype1)
+
+train1 <- dataTrainTest1$train
+
+test1 <- dataTrainTest1$test
+
+dataTrainTest2 <- splitTrainAndTest(Data.Marketing.Clean.Transformed.cutomertype2)
+
+train2 <- dataTrainTest2$train
+
+test2 <- dataTrainTest2$test
+
+dataTrainTest3 <- splitTrainAndTest(Data.Marketing.Clean.Transformed.cutomertype3)
+
+train3 <- dataTrainTest3$train
+
+test3 <- dataTrainTest3$test
+
+
+```
+
+Selecting the feature for Model building
+
+```{r}
+
+names(Data.Marketing.Clean.Transformed)
+
+FeatureSelection = c("lastDelay"    ,"las2ndDelay"                     ,"lastCompleteDuration"            
+,"las2ndCompletedAfterCall"         ,"Encoded.Week.back"               ,"visit"                           
+,"Masked.Setup.Day.Week"            ,"Masked.Call.Day.Week"            ,"Masked.Schedule.Day.Week"        
+,"Masked.Dispatch.Day.Week"         ,"Masked.Complete.Day.Week"        ,"Masked.customer.week.back.bucket"
+,"Masked.churn.prob"                ,"Masked.visit"                    ,"Bill.To"                         
+,"Encoded.Area"                     ,"Masked.Year.Month"               ,"Masked.Quarter"                  
+,"Quarter"                          ,"Year"                            ,"Month"                            
+,"Job.Code"                         ,"Rev.Code"                        ,"threshold_churn"                             ,"tickeket.hike"                    ,"tickeket.2nd.hike"               ,"Ticket.Revenue"                              ,"Days.Scheduled.After.Call"       ,"Days.Dispatched.After.Schedule"  
+,"Days.Completed.After.Dispatched"  ,"Days.Completed.After.Call"                  
+,"Days.WeekFiscal.call"             ,"Days.WeekFiscal.Schedule"        ,"Days.WeekFiscal.Dispatch"        
+,"Days.WeekFiscal.Complete"         ,"churn"                           
+,"Last.Hike"                        ,"Masked.BranchId"                 ,"Masked.State"                    
+,"Masked.Zip.Code"                  ,"Masked.Customer.Id"              ,"Masked.Customer.Type"            
+,"Masked.Year"                      ,"Masked.Month"                    ,"Masked.City"                     
+,"Masked.Zip.5"                     ,"Masked.Area.1"                   ,"Masked.Area.2"                   
+,"Masked.Job.Rev"                   ,"Encoded.Area.Year.Quarter.Month" ,"Encoded.last.Trans.Delays"
+,"Masked.visit"                     ,"Masked.Job.Rev","Days.WeekFiscal.setup" ,"Days.interval.setup" ,"Customer.Week.Back","Setup.Date.timestamp" ,"Week.Ending.Date.timestamp" ,"Complete.Date.Time.timestamp"  
+,"Dispatch.Date.Time.timestamp"     ,"Schedule.Date.Time.timestamp"  
+,"Call.Date.Time.timestamp"         ,"Customer.Ticket.status" ,"setup.days"     ,"Customer.Ticket.pricing"  ,"Week.End.Timestamp"  ,"Week.timestamp","last.Revenue.hike","lastRevenue","last2ndRevenue","lastCall" )
+
+
+
+
+
+#write.csv(Data.Marketing.Clean.Transformed, file = "Data.Marketing.Clean.Transformed.csv",row.names=FALSE)
+
+
+```
+
+Extracting the feature
+```{r}
+
+setdiff(FeatureSelection,names(train))
+train = train[,FeatureSelection]
+test = test[,FeatureSelection]
+
+table(train$churn)
+
+table(test$churn)
+
+#train <- ovun.sample(churn ~ ., data = train, method = "over",N = 1014)$data
+
+#table(train$churn)
+
+#test <- ovun.sample(churn ~ ., data = test, method = "over",N = 308)$data
+
+#table(test$churn)
+
+```
+
+Model Development and Model Validation
+-----------------------------------------
+
+Logistic Regression
+```{r}
+
+logisticRegressionModel <- function(train, test, formula){
+  
+  train$churn = as.factor(train$churn)
+
+  test$churn = as.factor(test$churn)
+  
+  BestModel <- glm(formula,data=train,family=binomial)
+  
+  BestModel
+  
+  display(BestModel)
+
+  plot(BestModel)
+
+  summary(BestModel)
+
+  coefficients(BestModel)
+
+  vif(BestModel)
+
+  #step = stepAIC(BestModel, direction="both")
+
+  #print(step$anova)
+  
+ #interpretation
+ #What is the equation?
+ #log(p/1-p) = -1.1915 + 5.2880*setup+4.516494e*delays-...+7.961517*Ticketstatus
+ #For every 5 unit change in delay the log odds of response = likely to churn
+ #(versus non-response) increases by 0.0267
+ 
+  #goodness of fit
+  1-pchisq(deviance(BestModel), df=df.residual(BestModel))
+  #the higher the better and evidence to reject the 
+  #hypothesis that the fitted model is correct
+  
+  plot(train$churn, BestModel$fitted.values, type="p")
+
+  train$prob = BestModel$fitted.values
+
+  prob<-predict(BestModel, type="response")
+
+  pred_class <- factor(ifelse(prob>0.375, 1, 0))
+
+  metrics = table(train$churn,pred_class)
+  
+  print("############# Test Confusion Matrix ##################")
+
+  print(metrics)
+
+  confusionMatrix(metrics)
+
+  accuracy =(metrics[1,1]+metrics[2,2])/(length(pred_class)) 
+
+  Recall = metrics[2,2]/(metrics[2,2]+metrics[2,1])
+
+  Precision = metrics[2,2]/(metrics[2,2]+metrics[1,2])
+  
+  print("############# Train Accuracy ##################")
+
+  print(accuracy)
+  
+  print("############# Train Recall ##################")
+
+  print(Recall)
+  
+  print("############# Train Precision ##################")
+
+  print(Precision)
+
+  ### on test data
+
+  probt <- predict(BestModel, newdata = test, type="response")
+
+  # Build confusion matrix and find accuracy   
+
+  pred_class <- factor(ifelse(probt>0.375, 1, 0))
+
+  cm_Test = table(test$churn, pred_class)
+  
+  print("############# Test Confusion matrix ##################")
+  
+  print(cm_Test)
+
+  confusionMatrix(cm_Test)
+
+  accu_Test= sum(diag(cm_Test))/sum(cm_Test)
+  
+  Recall = cm_Test[2,2]/(cm_Test[2,2]+cm_Test[2,1])
+
+  Precision = cm_Test[2,2]/(cm_Test[2,2]+cm_Test[1,2])
+  
+  print("############# Test Accuracy ##################")
+
+  print(accu_Test)
+  
+  print("############# Train Recall ##################")
+
+  print(Recall)
+  
+  print("############# Train Precision ##################")  
+  
+  print(Precision)
+  
+  test$pred = pred_class
+  Unchurned.Data =  test[with(test, pred == "0" ),]
+  
+  result = data.frame(Unchurned.Data$Rev.Code)
+  
+  pred <- prediction(prob, train$churn)
+  perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+  
+  
+  # And then a lift chart
+  perf1 <- performance(pred,"lift","rpp")
+  plot(perf1, main="lift curve", colorize=T)
+  
+  
+  #perf
+  plot(perf, col=rainbow(10), 
+     colorize=T, 
+     print.cutoffs.at = seq(0,1,0.1))
+  auc <- performance(pred, measure = "auc")
+  auc <- auc@y.values[[1]]
+  print("########## AUC ###############")
+  print(auc)
+
+  roc.data <- data.frame(fpr=unlist(perf@x.values),
+                       tpr=unlist(perf@y.values),
+                       model="GLM")
+  ggplot(roc.data, aes(x=fpr, ymin=0, ymax=tpr)) +
+  geom_ribbon(alpha=0.2) +
+  geom_line(aes(y=tpr)) +
+  ggtitle(paste0("ROC Curve w/ AUC=", auc))
+  
+  return (result)
+  
+}
+
+variables <- c("lastCall","Encoded.Area.Year.Quarter.Month","Encoded.last.Trans.Delays","Week.End.Timestamp",
+               "Masked.Customer.Id")
+
+xnam <- paste0( variables)
+
+fmla <- as.formula(paste("churn ~ ", paste(xnam, collapse= "+")))
+
+print("########## Logistic on full data ###############")
+result.logistic.full.data = logisticRegressionModel(train,test,fmla)
+
+print("########## Logistic result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.logistic.full.data)
+
+
+print("########## Logistic on Customer type1  data ###############")
+result.logistic.customer.type1 = logisticRegressionModel(train = train1,test = test1,fmla)
+
+print("########## Logistic result on type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.logistic.customer.type1)
+
+print("########## Logistic on Customer type2  data ###############")
+result.logistic.customer.type2 = logisticRegressionModel(train = train2,test = test2,fmla)
+
+print("########## Logistic result on type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.logistic.customer.type2)
+
+print("########## Logistic on Customer type3  data ###############")
+result.logistic.customer.type3 = logisticRegressionModel(train = train3,test = test3,fmla)
+
+print("########## Logistic result on type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.logistic.customer.type3)
+
+print("########## End of Logistic Regression ###############")
+
+
+
+```
+
+Random Forest
+
+```{r}
+
+
+randomForestModel <- function(train, test, attr){
+
+train_Data = train[,attr]
+test_Data = test[,attr]
+table(train_Data$churn)
+table(test_Data$churn)
+
+train_Data$churn = as.factor(train_Data$churn)
+test_Data$churn = as.factor(test_Data$churn)
+
+# Build the classification model using randomForest
+model = randomForest(churn ~ ., data=train_Data, 
+                      keep.forest=TRUE, ntree=5) 
+
+# Print and understand the model
+print(model)
+
+# Important attributes
+
+model$importance  
+round(importance(model), 2)   
+
+# Extract and store important variables obtained from the random forest model
+rf_Imp_Attr = data.frame(model$importance)
+rf_Imp_Attr = data.frame(row.names(rf_Imp_Attr),rf_Imp_Attr[,1])
+colnames(rf_Imp_Attr) = c('Attributes', 'Importance')
+rf_Imp_Attr = rf_Imp_Attr[order(rf_Imp_Attr$Importance, decreasing = TRUE),]
+
+# plot (directly prints the important attributes) 
+varImpPlot(model)
+
+# Predict on Train data 
+pred_Train = predict(model, train_Data[,setdiff(names(train_Data),"churn")],
+                     type="response", norm.votes=TRUE)
+
+# Build confusion matrix and find accuracy   
+cm_Train = table("actual"= train_Data$churn, "predicted" = pred_Train);
+accu_Train= sum(diag(cm_Train))/sum(cm_Train)
+rm(pred_Train, cm_Train)
+
+# Predicton Test Data
+pred_Test = predict(model, test_Data[,setdiff(names(test_Data),"churn")],
+                    type="response", norm.votes=TRUE)
+
+# Build confusion matrix and find accuracy   
+cm_Test = table("actual"= test_Data$churn, "predicted" = pred_Test);
+accu_Test= sum(diag(cm_Test))/sum(cm_Test)
+
+print("Train Accuracy")
+print(accu_Train)
+print("Test Accuracy")
+print(accu_Test)
+
+test$pred = pred_Test
+Unchurned.Data =  test[with(test, pred == "0" ),]
+  
+result = data.frame(Unchurned.Data$Rev.Code)
+
+rm(pred_Test, cm_Test)
+
+return (result)
+
+}
+
+
+attr = c("Encoded.Area.Year.Quarter.Month", 
+         "Encoded.last.Trans.Delays","lastCall" ,"Masked.Customer.Id","Week.End.Timestamp"
+         ,"Schedule.Date.Time.timestamp","churn")
+
+setdiff(attr,names(train))
+
+print("########## Random Forest on full data ###############")
+result.random.full.data = randomForestModel(train,test,attr)
+
+print("########## Random Forest result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.random.full.data)
+
+
+print("########## Random Forest on type1  data ###############")
+result.random.customer.type1 = randomForestModel(train = train1,test = test1,attr)
+
+print("########## Random Forest result on Customer on type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.random.customer.type1)
+
+print("########## Random Forest on Customer type2  data ###############")
+result.random.customer.type2 = randomForestModel(train = train2,test = test2,attr)
+
+print("########## Random Forest on on type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.random.customer.type2)
+
+print("########## Random Forest on Customer type3  data ###############")
+result.random.customer.type3 = randomForestModel(train = train3,test = test3,attr)
+
+print("########## Random Forest on on type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.random.customer.type3)
+
+print("########## End of Random Forest ###############")
+
+
+
+```
+
+
+Support Vector Machine
+```{r}
+
+supportVectorModel <- function(train, test, attr){
+  
+train_Data = decostand(train[,attr], "range") 
+test_Data = decostand(test[,attr], "range") 
+train$churn = as.factor(train$churn)
+test$churn = as.factor(test$churn)
+
+# Build best SVM model 
+model = svm(x = train_Data, 
+            y = train$churn, 
+            type = "C-classification", 
+            kernel = "linear", cost = 10, gamma = 0.1) 
+
+# Look at the model summary
+summary(model)
+
+model$index
+
+plot(cmdscale(dist(train_Data)),
+     col = as.integer(train$churn),
+     pch = c("o","+")[1:nrow(train_Data) %in% model$index + 1])
+
+# Predict on train data  
+pred_Train  =  predict(model, train_Data)  
+
+# Build confusion matrix and find accuracy   
+cm_Train = table(train$churn, pred_Train)
+accu_Train= sum(diag(cm_Train))/sum(cm_Train)
+rm(pred_Train, cm_Train)
+
+# Predict on test data
+pred_Test = predict(model, test_Data) 
+
+# Build confusion matrix and find accuracy   
+cm_Test = table(test$churn, pred_Test)
+accu_Test= sum(diag(cm_Test))/sum(cm_Test)
+
+#print("######## Train Accuracy ########")
+#print(accu_Train)
+#print("######## Test Accuracy ########")
+#print(accu_Test)
+
+#SVM Tune
+
+tuneresult <- tune(svm,train_Data,train$churn,ranges = list(gamma=10^(-6:-1),cost = 2^(2:3)))
+print(tuneresult)
+
+tunemodel  <- tuneresult$best.model
+tunemodelY <- predict(tunemodel,as.matrix(train_Data))
+conf <- table(train$churn,tunemodelY)
+
+
+
+confusionMatrix(conf)
+accu_Train= sum(diag(conf))/sum(conf)
+print("######## Train Accuracy of tuned SVM ########")
+print(accu_Train)
+
+
+tunemodelY <- predict(tunemodel,as.matrix(test_Data))
+conf <- table(test$churn,tunemodelY)
+
+confusionMatrix(conf)
+accu_Test= sum(diag(conf))/sum(conf)
+
+print("######## Test Accuracy of tuned SVM ########")
+print(accu_Test)
+
+test$pred = pred_Test
+Unchurned.Data =  test[with(test, pred == "0" ),]
+result = data.frame(Unchurned.Data$Rev.Code)
+rm(pred_Test, cm_Test)
+
+return (result)
+  
+}
+
+attr = c("Encoded.Area.Year.Quarter.Month","lastCall","Masked.Customer.Id","Week.Ending.Date.timestamp","Ticket.Revenue")
+
+print("######## SVM on full data ########")
+result.svm.customer.all = supportVectorModel(train=train,test = test,attr = attr)
+
+print("########## SVM result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.svm.customer.all)
+
+
+print("######## SVM on full data ########")
+result.svm.customer.type1 = supportVectorModel(train=train1,test = test1,attr = attr)
+
+print("########## SVM result on Customer type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.svm.customer.type1)
+
+print("######## SVM on full data ########")
+result.svm.customer.type2 = supportVectorModel(train=train2,test = test2,attr = attr)
+
+print("########## SVM result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.svm.customer.type2)
+
+print("######## SVM on full data ########")
+result.svm.customer.type3 = supportVectorModel(train=train3,test = test3,attr = attr)
+
+print("########## SVM result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.svm.customer.type3)
+
+
+rm(model)
+
+```
+
+```{r}
+
+ensempleStackingModel <- function(train, test, attr){
+  
+train_Data = train[,attr]
+test_Data = test[,attr]
+train_Data$churn = as.factor(train_Data$churn)
+test_Data$churn = as.factor(test_Data$churn)
+table(train_Data$churn)
+table(test_Data$churn)
+
+#----------------Ensemble:Stacking-------------------- 
+
+# Build CART model on the training dataset
+cart_Model = rpart(churn ~ ., train_Data, method = "class")
+summary(cart_Model)
+
+# Build C5.0 model on the training dataset
+c50_Model = C5.0(churn ~ ., train_Data, rules = T)
+summary(c50_Model)
+
+# Build Logistic regression on the training dataset
+glm_Model = glm(churn ~ ., train_Data, family = binomial)
+summary(glm_Model)
+
+#---------Predict on Train Data----------
+
+# Using CART Model predict on train data
+cart_Train = predict(cart_Model, train_Data, type = "vector") 
+table(cart_Train)
+
+# if we choose type=vector, then replace 1 with 0 and 2 with 1
+cart_Train = ifelse(cart_Train == 1, 0, 1)
+table(cart_Train)
+
+# Using C5.0 Model predicting with the train dataset
+c50_Train = predict(c50_Model, train_Data, type = "class")
+c50_Train = as.vector(c50_Train)
+table(c50_Train)
+
+# Using GLM Model predicting on train dataset
+glm_Train = predict(glm_Model, train_Data, type = "response")
+#it gives probabilities, so we #need to convert to 1's and 0's; 
+# if >0.5 show as 1 or else show as 0.
+glm_Train = ifelse(glm_Train > 0.5, 1, 0) 
+table(glm_Train)
+
+# Combining training predictions of CART, C5.0 & Log Regression together
+train_Pred_All_Models = data.frame(CART = cart_Train, 
+                                   C50 = c50_Train,
+                                   GLM = glm_Train)
+train_Pred_All_Models = data.frame(sapply(train_Pred_All_Models, as.factor))
+
+# or first use "apply" then type data_ensemble = data.frame(data_ensemble)
+str(train_Pred_All_Models)
+summary(train_Pred_All_Models)
+rm(cart_Train, glm_Train, c50_Train)
+
+# Viewing the predictions of each model
+table(train_Pred_All_Models$CART) #CART 
+table(train_Pred_All_Models$C50)  #C5.0
+table(train_Pred_All_Models$GLM)  #Logistic Regression
+table(train_Data$churn) #Original Dataset DV
+
+# Adding the original DV to the dataframe
+train_Pred_All_Models = cbind(train_Pred_All_Models, churn = train_Data$churn)
+
+# Ensemble Model with GLM as Meta Learner
+str(train_Pred_All_Models)
+head(train_Pred_All_Models)
+
+ensemble_Model = glm(churn ~ ., train_Pred_All_Models, family = binomial)
+summary(ensemble_Model)
+
+# Check the "ensemble_Model model" on the train data
+ensemble_Train = predict(ensemble_Model, train_Pred_All_Models, 
+                         type = "response")
+ensemble_Train = ifelse(ensemble_Train > 0.5, 1, 0)
+table(ensemble_Train)
+print("Train Accuracy on Stacking")
+
+cm_Ensemble = table(ensemble_Train, train_Pred_All_Models$churn)
+print(cm_Ensemble)
+print(sum(diag(cm_Ensemble))/sum(cm_Ensemble))
+
+#---------Predict on Test Data----------
+
+# Using CART Model prediction on test dataset
+cart_Test = predict(cart_Model, test_Data, type="vector")
+cart_Test = ifelse(cart_Test == 1, 0, 1)
+
+cm_CART = table(cart_Test, test_Data$churn)
+sum(diag(cm_CART))/sum(cm_CART)
+
+# Using C50 Model prediction on test dataset 
+c50_Test = predict(c50_Model, test_Data, type = "class")
+c50_Test = as.vector(c50_Test)
+
+cm_C50 = table(c50_Test, test_Data$churn)
+sum(diag(cm_C50))/sum(cm_C50)
+
+# Using GLM Model prediction on test dataset
+glm_Test = predict(glm_Model, test_Data, type="response")
+glm_Test = ifelse(glm_Test > 0.5, 1, 0)
+
+cm_Glm = table(glm_Test, test_Data$churn)
+sum(diag(cm_Glm))/sum(cm_Glm)
+
+###########################################################
+
+# Combining test predictions of CART, C5.0 & Log Regression together 
+test_Pred_All_Models = data.frame(CART = cart_Test, 
+                                  C50 = c50_Test, 
+                                  GLM = glm_Test) 
+rm(cart_Test, c50_Test, glm_Test)
+
+test_Pred_All_Models = data.frame(sapply(test_Pred_All_Models, as.factor))
+str(test_Pred_All_Models)
+head(test_Pred_All_Models)
+
+# Check the "glm_ensemble model" on the test data
+ensemble_Test = predict(ensemble_Model, test_Pred_All_Models, type = "response")
+ensemble_Test = ifelse(ensemble_Test > 0.5, 1, 0)
+table(ensemble_Test)
+
+cm_Ensemble = table(ensemble_Test, test_Data$churn)
+
+print(cm_Ensemble)
+print("Test Accuracy on Stacking")
+print(sum(diag(cm_Ensemble))/sum(cm_Ensemble))
+
+test$pred = ensemble_Test
+Unchurned.Data =  test[with(test, pred == "0" ),]
+result = data.frame(Unchurned.Data$Rev.Code)
+
+return (result)  
+}
+
+
+# Check how records are split with respect to target attribute.
+
+attr = c("Encoded.Area.Year.Quarter.Month", 
+         "Encoded.last.Trans.Delays","lastCall" ,"Week.Ending.Date.timestamp", "churn")
+
+
+print("########## Stacking Starts ###############")
+print("######## Stacking on full data ########")
+result.stacking.customer.all = ensempleStackingModel(train=train,test = test,attr = attr)
+
+print("########## Stacking result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.stacking.customer.all)
+
+
+print("######## Stacking on customer type1 data ########")
+result.stacking.customer.type1 = ensempleStackingModel(train=train1,test = test1,attr = attr)
+
+print("########## Stacking result on Customer type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.stacking.customer.type1)
+
+print("######## Stacking on customer type2 data ########")
+result.stacking.customer.type2 = ensempleStackingModel(train=train2,test = test2,attr = attr)
+
+print("########## Stacking result on customer type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.stacking.customer.type2)
+
+print("######## Stacking on customer type3 data ########")
+result.stacking.customer.type3 = ensempleStackingModel(train=train3,test = test3,attr = attr)
+
+print("########## Stacking result on customer type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.stacking.customer.type3)
+
+print("########## Stacking Ends ###############")
+
+
+```
+
+ADABOOST Model
+```{r}
+
+adaBoostModel <- function(train_Data, test_Data, attr){
+  
+# Build best ada boost model 
+model = ada(x = train_Data[,attr], 
+            y = train_Data$churn, 
+            iter=5, loss="logistic",verbose=TRUE) # 5 Iterations 
+
+# Look at the model summary
+model
+summary(model)
+
+# Predict on train data  
+pred_Train  =  predict(model, train_Data[,attr])  
+
+# Build confusion matrix and find accuracy   
+cm_Train = table(train_Data$churn, pred_Train)
+accu_Train= sum(diag(cm_Train))/sum(cm_Train)
+rm(pred_Train, cm_Train)
+
+# Predict on test data
+pred_Test = predict(model, test_Data[,attr]) 
+
+# Build confusion matrix and find accuracy   
+cm_Test = table(test_Data$churn, pred_Test)
+accu_Test= sum(diag(cm_Test))/sum(cm_Test)
+
+print("Train Accuracy")
+print(accu_Train)
+print("Test Accuracy")
+print(accu_Test)
+
+test_Data$pred = pred_Test
+Unchurned.Data =  test_Data[with(test_Data, pred == "0" ),]
+result = data.frame(Unchurned.Data$Rev.Code)
+
+
+rm(pred_Test, cm_Test)
+rm(model, accu_Test, accu_Train, train_Data, test_Data)
+return (result)  
+}
+
+
+# Check how records are split with respect to target attribute.
+
+attr = c("Encoded.Area.Year.Quarter.Month", 
+         "Encoded.last.Trans.Delays","lastCall" ,"Week.Ending.Date.timestamp")
+
+
+print("########## AdaBoost Starts ###############")
+print("######## AdaBoost on full data ########")
+result.ada.customer.all = adaBoostModel(train=train,test = test,attr = attr)
+
+print("########## AdaBoost result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.ada.customer.all)
+
+
+print("######## AdaBoost on customer type1 data ########")
+result.ada.customer.type1 = adaBoostModel(train=train1,test = test1,attr = attr)
+
+print("########## AdaBoost result on Customer type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.ada.customer.type1)
+
+print("######## AdaBoost on customer type2 data ########")
+result.ada.customer.type2 = adaBoostModel(train=train2,test = test2,attr = attr)
+
+print("########## AdaBoost result on customer type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.ada.customer.type2)
+
+print("######## AdaBoost on customer type3 data ########")
+result.ada.customer.type3 = adaBoostModel(train=train3,test = test3,attr = attr)
+
+print("########## AdaBoost result on customer type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.ada.customer.type3)
+
+print("########## AdaBoost Ends ###############")
+
+```
+
+XGBOOST Model
+
+```{r}
+
+xgBoostModel <- function(train_Data, test_Data, attr){
+  
+# Divide the data into test, train and eval
+set.seed(123)
+
+rowIDs = 1:nrow(test_Data)
+test_RowIDs =  sample(rowIDs, length(rowIDs)*0.90)
+eval_RowIDs = sample(setdiff(rowIDs, test_Data), length(rowIDs)*0.1)
+rm(rowIDs)
+
+test_Data = test_Data[test_RowIDs,]
+eval_Data = test_Data[eval_RowIDs,]
+rm( test_RowIDs, eval_RowIDs)
+
+# Check how records are split with respect to target attribute.
+table(train_Data$churn)
+table(test_Data$churn)
+table(eval_Data$churn)
+
+train_Data$churn = as.numeric(as.character(train_Data$churn))
+test_Data$churn = as.numeric(as.character(test_Data$churn))
+eval_Data$churn = as.numeric(as.character(eval_Data$churn))
+
+# fit the model
+dtrain = xgb.DMatrix(data = as.matrix(train_Data[,attr]),
+                     label = train_Data$churn)
+model = xgboost(data = dtrain, max.depth = 2, 
+                eta = 1, nthread = 2, nround = 2, 
+                objective = "binary:logistic", verbose = 1)
+
+# objective = "binary:logistic": we will train a binary classification model ;
+# max.deph = 2: the trees won't be deep, because our case is very simple ;
+# nthread = 2: the number of cpu threads we are going to use;
+# nround = 2: there will be two passes on the data
+# eta = 1: It controls the learning rate
+# verbose = 1: print evaluation metric
+
+# Both xgboost (simple) and xgb.train (advanced) functions train models.
+
+# Because of the way boosting works, there is a time when having too many rounds lead to an overfitting. One way to measure progress in learning of a model is to provide to XGBoost a second dataset already classified. Therefore it can learn on the first dataset and test its model on the second one. Some metrics are measured after each round during the learning.
+
+#Use watchlist parameter. It is a list of xgb.DMatrix, each of them tagged with a name.
+dtest = xgb.DMatrix(data = as.matrix(test_Data[,attr]),
+                    label = test_Data$churn)
+
+watchlist = list(train=dtrain, test=dtest)
+
+model = xgb.train(data=dtrain, max.depth=2,
+                  eta=1, nthread = 2, nround=15, 
+                  watchlist=watchlist,
+                  eval.metric = "error", 
+                  objective = "binary:logistic")
+# eval.metric allows us to monitor two new metrics for each round, logloss and error.
+
+importance <- xgb.importance(feature_names = attr, model = model)
+print(importance)
+xgb.plot.importance(importance_matrix = importance)
+
+# Gain is the improvement in accuracy brought by a feature to the branches it is on. 
+# Cover measures the relative quantity of observations concerned by a feature.
+# Frequency is the number of times a feature is used in all generated trees. 
+
+# save model to binary local file
+xgb.save(model, "xgboost.model")
+rm(model)
+
+# load binary model to R
+model <- xgb.load("xgboost.model")
+
+# predict
+pred <- predict(model, as.matrix(eval_Data[,attr]))
+
+# size of the prediction vector
+print(length(pred))
+
+# limit display of predictions to the first 10
+print(head(pred))
+
+# The numbers we get are probabilities that a datum will be classified as 1. 
+# Therefore, we will set the rule that if this probability for a 
+# specific datum is > 0.5 then the observation is classified as 1 (or 0 otherwise).
+
+prediction <- as.numeric(pred > 0.45)
+print(head(prediction))
+
+confusionMatrix(table(eval_Data$churn,prediction))
+print(table(eval_Data$churn,prediction))
+
+# Build confusion matrix and find accuracy   
+cm_Test = table(eval_Data$churn, prediction)
+accu_eval= sum(diag(cm_Test))/sum(cm_Test)
+
+print("Evaluation Accuracy")
+print(accu_eval)
+
+eval_Data$pred = prediction
+Unchurned.Data =  eval_Data[with(eval_Data, pred == "0" ),]
+result = data.frame(Unchurned.Data$Rev.Code)
+
+return (result)  
+  
+}
+
+# Check how records are split with respect to target attribute.
+
+attr = c("Encoded.Area.Year.Quarter.Month", 
+         "Encoded.last.Trans.Delays","lastCall" ,"Week.Ending.Date.timestamp")
+
+print("########## XGBoost Starts ###############")
+print("######## XGBoost on full data ########")
+result.xgboost.customer.all = xgBoostModel(train=train,test = test,attr = attr)
+
+print("########## xgBoostModel result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.xgboost.customer.all)
+
+
+print("######## xgBoostModel on customer type1 data ########")
+result.xgboost.customer.type1 = xgBoostModel(train=train1,test = test1,attr = attr)
+
+print("########## xgBoostModel result on Customer type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.xgboost.customer.type1)
+
+print("######## xgBoostModel on customer type2 data ########")
+result.xgboost.customer.type2 = xgBoostModel(train=train2,test = test2,attr = attr)
+
+print("########## xgBoostModel result on customer type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.xgboost.customer.type2)
+
+print("######## xgBoostModel on customer type3 data ########")
+result.xgboost.customer.type3 = xgBoostModel(train=train3,test = test3,attr = attr)
+
+print("########## xgBoostModel result on customer type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.xgboost.customer.type3)
+
+print("########## xgBoostModel Ends ###############")
+
+
+
+
+
+```
+
+Gradient Boosting Model
+
+```{r}
+
+
+gbmModel <- function(train, test, attr, port){
+  
+# Start H2O on the local machine using all available cores and with 1 gigabytes of memory
+h2o.init(nthreads = -1, max_mem_size = "2g",startH2O = TRUE, port = port)
+
+train$churn = as.factor(as.character(train$churn))
+test$churn = as.factor(as.character(test$churn))
+# Import a local R train data frame to the H2O cloud
+
+train.hex <- as.h2o(x = train[,attr], destination_frame = "train.hex")
+
+
+# Prepare the parameters for the for H2O gbm grid search
+ntrees_opt <- c(5, 10, 15, 20, 30)
+maxdepth_opt <- c(2, 3, 4, 5)
+learnrate_opt <- c(0.01, 0.05, 0.1, 0.15 ,0.2, 0.25)
+hyper_parameters <- list(ntrees = ntrees_opt, 
+                         max_depth = maxdepth_opt, 
+                         learn_rate = learnrate_opt)
+
+# Build H2O GBM with grid search
+grid_GBM <- h2o.grid(algorithm = "gbm", grid_id = "grid_GBM.hex",
+                     hyper_params = hyper_parameters, 
+                     y = "churn", x = setdiff(names(train.hex), "churn"),
+                     training_frame = train.hex)
+
+# Remove unused R objects
+rm(ntrees_opt, maxdepth_opt, learnrate_opt, hyper_parameters)
+
+# Get grid summary
+summary(grid_GBM)
+
+# Fetch GBM grid models
+grid_GBM_models <- lapply(grid_GBM@model_ids, 
+                          function(model_id) { h2o.getModel(model_id) })
+
+
+# Function to find the best model with respective to AUC
+find_Best_Model <- function(grid_models){
+  best_model = grid_models[[1]]
+  best_model_AUC = h2o.auc(best_model)
+  for (i in 2:length(grid_models)) 
+  {
+    temp_model = grid_models[[i]]
+    temp_model_AUC = h2o.auc(temp_model)
+    if(best_model_AUC < temp_model_AUC)
+    {
+      best_model = temp_model
+      best_model_AUC = temp_model_AUC
+    }
+  }
+  return(best_model)
+}
+
+# Find the best model by calling find_Best_Model Function
+best_GBM_model = find_Best_Model(grid_GBM_models)
+
+rm(grid_GBM_models)
+
+# Get the auc of the best GBM model
+best_GBM_model_AUC = h2o.auc(best_GBM_model)
+
+# Examine the performance of the best model
+best_GBM_model
+
+# View the specified parameters of the best model
+best_GBM_model@parameters
+
+# Important Variables.
+varImp_GBM <- h2o.varimp(best_GBM_model)
+
+# Import a local R test data frame to the H2O cloud
+test.hex <- as.h2o(x = test[,attr], destination_frame = "test.hex")
+
+
+# Predict on same training data set
+predict.hex = h2o.predict(best_GBM_model, 
+                          newdata = test.hex[,setdiff(names(test.hex), "churn")])
+       
+data_GBM = h2o.cbind(test.hex[,"churn"], predict.hex)
+                    
+# Copy predictions from H2O to R
+pred_GBM = as.data.frame(data_GBM)
+
+# Shutdown H2O
+h2o.shutdown(F)
+
+# Hit Rate and Penetration calculation
+conf_Matrix_GBM = table(pred_GBM$churn, pred_GBM$predict) 
+
+Accuracy = (conf_Matrix_GBM[1,1]+conf_Matrix_GBM[2,2])/sum(conf_Matrix_GBM)
+
+print("Test Accuracy")
+print(Accuracy)
+
+test$pred = pred_GBM$predict
+Unchurned.Data =  test[with(test, pred == "0" ),]
+result = data.frame(Unchurned.Data$Rev.Code)
+
+return (result)  
+
+
+}
+
+
+
+# Check how records are split with respect to target attribute.
+
+attr = c("Encoded.Area.Year.Quarter.Month", 
+         "Encoded.last.Trans.Delays","lastCall" ,"Week.Ending.Date.timestamp", "churn")
+
+print("########## GBM Starts ###############")
+print("######## GBM on full data ########")
+result.gbm.customer.all = gbmModel(train=train,test = test,attr = attr, port = 54321)
+
+print("########## GBM Model result on full data ###############")
+print ("#### Customer likely to opt service")
+print(result.gbm.customer.all)
+
+print("######## GBM Model on customer type1 data ########")
+result.gbm.customer.type1 = gbmModel(train=train1, test = test1,attr = attr, port = 54322)
+
+print("########## GBM Model result on Customer type1 data ###############")
+print ("#### Customer likely to opt service")
+print(result.gbm.customer.type1)
+
+print("######## GBM Model on customer type2 data ########")
+result.gbm.customer.type2 = gbmModel(train=train2, test = test2,attr = attr, port = 54323)
+
+print("########## GBM Model result on customer type2 data ###############")
+print ("#### Customer likely to opt service")
+print(result.gbm.customer.type2)
+
+print("######## GBM Model on customer type3 data ########")
+result.gbm.customer.type3 = gbmModel(train=train3, test = test3,attr = attr, port = 54324)
+
+print("########## GBM Model result on customer type3 data ###############")
+print ("#### Customer likely to opt service")
+print(result.gbm.customer.type3)
+
+print("########## GBM Model Ends ###############")
+
+
+```
+
+
+Insights & Inferences
+-----------------------------------------
+
+Number of customer type
+```{r}
+
+ggplot(Data.Marketing.Clean.Transformed, aes(Customer.Type, fill = Customer.Type ) ) +
+  geom_bar() +
+labs(title = "Number of customer type ",
+           x = "Customer Type")
+
+```
+```{r}
+
+ggplot(Data.Marketing.Clean.Transformed, aes(Customer.Type) ) +
+  geom_bar() + facet_grid(churn ~ .)+
+labs(title = "Customer type split on churn count",
+           x = "Customer Type",y = "Count")
+
+ggplot(Data.Marketing.Clean.Transformed, aes(churn, lastRevenue) ) +
+  geom_point() +
+  labs(title = "Last Revenue versus churn ",
+           x = "Churn",y = "Last Revenue")
+
+ggplot(Data.Marketing.Clean.Transformed, aes(churn, Encoded.last.Trans.Delays) ) +
+  geom_point() +
+labs(title = "Last Transaction Delay versus churn ",
+           x = "Churn",y = "Last transaction delays")
+
+```
+
+```{r}
+
+ggplot(Data.Marketing.Clean.Transformed, aes(State, ..count..)) +
+  geom_bar(position="dodge") +
+  labs(title = "Number of customer across State",
+           x = "States")
+
+#ggplot(Data.Marketing.Clean.Transformed, aes(churn, fill=State ) ) +
+#  geom_bar(position="dodge")  +
+#  labs(title = "Number of churn and unchuracross State",
+#           x = "States",y="Count")
+
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
